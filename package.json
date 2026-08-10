@@ -1,0 +1,20 @@
+{
+  "name": "bheemz-kitchen-app",
+  "version": "1.0.0",
+  "description": "Welcome to the Bheemz Kitchen App! This project is designed to provide users with a delightful experience in exploring various kitchen recipes and culinary tips.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2"
+  }
+}

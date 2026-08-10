@@ -1,0 +1,8 @@
+{
+    "appId": "com.bheemzkitchen.app",
+    "appName": "Bheemz Kitchen",
+    "webDir": "www",
+    "server": {
+        "androidScheme": "http"
+    }
+}

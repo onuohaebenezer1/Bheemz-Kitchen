@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bheemz Kitchen App</title>
+    <link rel="stylesheet" href="layout.css">
+</head>
+
+<body>
+    <div class="mobile-frame">
+
+        <!-- 🔐 1. Main Security Portal Modal -->
+        <div id="auth-modal" class="modal-overlay">
+            <div class="auth-card">
+                <h2>Bheemz Kitchen </h2>
+                <p>Secure Authentication</p>
+
+                <div class="auth-tab-buttons">
+                    <button id="tab-login" class="auth-tab-btn active" onclick="switchAuthTab('login')">Login</button>
+                    <button id="tab-signup" class="auth-tab-btn" onclick="switchAuthTab('signup')">Sign Up</button>
+                </div>
+
+                <!-- A. Login Context View -->
+                <div id="login-panel">
+                    <input type="email" id="login-email" placeholder="Email Address">
+                    <input type="password" id="login-pass" placeholder="Password">
+                    <button onclick="handleLogin()">Login</button>
+                    <div class="small-note">Forgot credentials? <span onclick="showPasswordReset()">Reset Password</span></div>
+                </div>
+
+                <!-- B. Signup Context View -->
+                <div id="signup-panel" style="display: none;">
+                    <input type="text" id="reg-name" placeholder="Full Name">
+                    <input type="text" id="reg-phone" placeholder="Phone Number">
+                    <input type="email" id="reg-email" placeholder="Email Address">
+                    <input type="password" id="reg-pass" placeholder="Create Password">
+                    <input type="text" id="reg-address" placeholder="Delivery Address">
+                    <button onclick="handleRegistration()">Create Account</button>
+                </div>
+
+                <!-- C. Email Verification View Layer -->
+                <div id="email-verify-panel" style="display: none;">
+                    <h3>Email Verification ✉️</h3>
+                    <p>We sent an email validation link to your target inbox address now!!.</p>
+                    <button onclick="completeEmailVerification()">I Have Verified My Email</button>
+                    <div class="small-note">No message? <span onclick="resendVerification()">Resend Code</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🔒 2. Password Reset Modal Frame (FIXED) -->
+        <div id="password-reset-modal" class="modal-overlay" style="display: none;">
+            <div class="auth-card">
+                <h2>Account Recovery </h2>
+                <p>Provide your registered email account to route verification links.</p>
+                <input type="email" id="reset-email" placeholder="Email Address">
+                <button onclick="handlePasswordReset()">Send Reset Link</button>
+                <div class="small-note"><span onclick="closePasswordReset()">Back to Login</span></div>
+            </div>
+        </div>
+
+        <!-- 📈 3. Biometric Metric Profile Setup Form -->
+        <div id="profile-modal" class="modal-overlay" style="display: none;">
+            <div class="auth-card">
+                <h2>Health Profile Setup </h2>
+                <div class="input-row">
+                    <input type="number" id="prof-age" placeholder="Age">
+                    <input type="number" id="prof-weight" placeholder="Weight (kg)">
+                </div>
+                <div class="input-row">
+                    <input type="number" id="prof-height" placeholder="Height (cm)">
+                    <select id="prof-gender">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+                <label>Primary Health Goal:</label>
+                <select id="prof-goal">
+                    <option value="Weight Loss">Weight Loss</option>
+                    <option value="Weight Gain">Weight Gain</option>
+                    <option value="Healthy Eating">Healthy Eating</option>
+                    <option value="Fitness Maintenance">Fitness Maintenance</option>
+                </select>
+                <label>Health Challenges:</label>
+                <select id="prof-challenge">
+                    <option value="None">None</option>
+                    <option value="Hypertension">Hypertension</option>
+                    <option value="Diabetes">Diabetes</option>
+                    <option value="Ulcer">Ulcer</option>
+                    <option value="High Cholesterol">High Cholesterol</option>
+                </select>
+                <label>Dietary Preferences:</label>
+                <select id="prof-pref">
+                    <option value="Low Salt">Low Salt</option>
+                    <option value="Low Carb">Low Carb</option>
+                    <option value="High Protein">High Protein</option>
+                    <option value="Vegetarian">Vegetarian</option>
+                </select>
+                <label>Target Daily Calories (Optional):</label>
+                <input type="number" id="prof-expected-calories" placeholder="e.g. 1800">
+                <button onclick="handleProfileSubmit()">Save & Explore Menu</button>
+            </div>
+        </div>
+
+        <!-- 📖 4. Dynamic Recipe Detail Modal Window View (FIXED) -->
+        <div id="recipe-modal" class="modal-overlay" style="display: none;">
+            <div class="recipe-card">
+                <button class="close-modal" onclick="closeRecipeModal()">✕</button>
+                <h3 id="recipe-title">Meal Recipe</h3>
+                <div class="recipe-meta">⏱️ Cooking Duration: <span id="recipe-duration">--</span></div>
+                <p id="recipe-text" style="font-size:12px; color:var(--muted-grey);"></p>
+
+                <div id="recipe-details">
+                    <h4>Ingredients Checklist:</h4>
+                    <ul id="recipe-ingredients"></ul>
+                    <h4>Step-by-Step Preparation:</h4>
+                    <ol id="recipe-steps"></ol>
+                </div>
+                <p id="recipe-notes" style="font-style:italic; font-size:11px; margin-top:10px; color:var(--bheemz-orange);"></p>
+            </div>
+        </div>
+
+        <!-- 📱 5. Core Operational Application Shell Frame -->
+        <header class="app-header">
+            <div>
+                <a href="landing.html" style="text-decoration:none; color:inherit;">
+                    <h2 style="font-size:16px;">Bheemz Kitchen</h2>
+                </a>
+                <div id="user-badge" class="user-welcome">Guest Profile</div>
+            </div>
+            <div class="header-actions">
+                <button class="theme-btn" onclick="toggleTheme()">🌓</button>
+                <button class="profile-btn" onclick="showProfileModal()">👤 Profile</button>
+                <button class="logout-btn" onclick="handleLogout()">Logout</button>
+            </div>
+        </header>
+
+        <!-- Category Horizontal Filter Scroll Menu Area -->
+        <div class="category-tabs">
+            <button class="tab-btn active" onclick="filterCategory('All', this)">All</button>
+            <button class="tab-btn" onclick="filterCategory('Breakfast', this)">Breakfast</button>
+            <button class="tab-btn" onclick="filterCategory('Lunch', this)">Lunch</button>
+            <button class="tab-btn" onclick="filterCategory('Dinner', this)">Dinner</button>
+            <button class="tab-btn" onclick="filterCategory('Smoothies', this)">Drinks</button>
+            <button class="tab-btn" onclick="filterCategory('Snacks', this)">Snacks</button>
+        </div>
+
+        <!-- Dynamic Content Screen Area -->
+        <main class="content-viewport" id="main-content-view">
+            <div class="section-title">Tailored Dietary Recommendations</div>
+            <div id="menu-target-container"></div>
+        </main>
+
+        <!-- Fixed Tab Navigator Control Hub -->
+        <nav class="mobile-navbar-nav">
+            <button class="nav-control" onclick="switchView('dashboard')"> Dashboard</button>
+            <button class="nav-control" onclick="switchView('experts')"> Experts</button>
+            <button class="nav-control" onclick="switchView('todaymeal')"> Today's Meal</button>
+            <button class="nav-control active" onclick="switchView('menu')"> Browse</button>
+            <button class="nav-control" onclick="switchView('cart')"> Cart (<span id="cart-counter">0</span>)</button>
+            <button class="nav-control" onclick="switchView('tracker')"> Tracker</button>
+            <button class="nav-control" onclick="switchView('features')"> Features</button>
+        </nav>
+    </div>
+    <div id="toast-container"></div>
+
+    <script src="layout.js"></script>
+</body>
+
+</html>

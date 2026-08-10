@@ -1,0 +1,5 @@
+{
+    "files.autoSave": "onFocusChange",
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "chat.agent.maxRequests": 100
+}
