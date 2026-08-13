@@ -87,6 +87,19 @@ function initApp() {
     currentAppState.notificationPreferences = JSON.parse(localStorage.getItem('bheemzNotificationPreferences') || JSON.stringify(currentAppState.notificationPreferences));
     updateAuthHeader();
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const verifyToken = urlParams.get('verify_token');
+
+    if (verifyToken) {
+        document.getElementById('auth-modal').style.display = 'flex';
+        switchAuthTab('login');
+        showVerificationPrompt();
+        window.pendingVerifyToken = verifyToken;
+        const storedTheme = localStorage.getItem('bheemzTheme') || 'light';
+        if (storedTheme === 'dark') document.body.classList.add('dark');
+        return;
+    }
+
     document.getElementById('auth-modal').style.display = 'none';
     switchView('dashboard');
     const storedTheme = localStorage.getItem('bheemzTheme') || 'light';
@@ -221,6 +234,7 @@ async function handleRegistration() {
         });
         const data = await res.json();
         if (res.ok) {
+            currentAppState.verificationToken = data?.delivery?.token || data?.verification_token || null;
             currentAppState.user = {...data.user, verified: false, password: btoa(payload.pass) };
             storeAccount(payload, currentAppState.user);
             showVerificationPrompt();
@@ -259,23 +273,79 @@ function showVerificationPrompt() {
     document.getElementById('email-verify-panel').style.display = 'block';
 }
 
-function completeEmailVerification() {
-    if (!currentAppState.user) {
+async function completeEmailVerification() {
+    const token = currentAppState.verificationToken || window.pendingVerifyToken || new URLSearchParams(window.location.search).get('verify_token');
+
+    if (!token) {
+        showAuthModal();
+        switchAuthTab('login');
+        showToast('No verification token found. Please use the email link or request a new one.');
         return;
     }
-    const account = currentAppState.savedAccounts.find(acc => acc.email === currentAppState.user.email);
-    if (account) {
-        account.verified = true;
-        saveAccounts();
+
+    try {
+        const res = await apiFetch(`${BACKEND_URL}/verify-email/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            showToast(data.error || 'Email verification failed.');
+            return;
+        }
+
+        if (currentAppState.user) {
+            const account = currentAppState.savedAccounts.find(acc => acc.email === currentAppState.user.email);
+            if (account) {
+                account.verified = true;
+                saveAccounts();
+            }
+            currentAppState.user.verified = true;
+            currentAppState.user.email_verified = true;
+            saveSession();
+        }
+
+        currentAppState.verificationToken = null;
+        delete window.pendingVerifyToken;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('verify_token');
+        window.history.replaceState({}, document.title, url.toString());
+
+        document.getElementById('auth-modal').style.display = 'flex';
+        switchAuthTab('login');
+        updateAuthHeader();
+        showToast('Email verified successfully. Please log in to continue.');
+    } catch (error) {
+        showToast('Could not verify your email right now. Please try again.');
     }
-    currentAppState.user.verified = true;
-    document.getElementById('auth-modal').style.display = 'none';
-    document.getElementById('profile-modal').style.display = 'flex';
-    updateAuthHeader();
 }
 
-function resendVerification() {
-    showToast('Verification email resent. Check your inbox for the link to confirm your account.');
+async function resendVerification() {
+    if (!currentAppState.user || !currentAppState.user.email) {
+        showToast('No registered email found to resend verification to.');
+        return;
+    }
+
+    try {
+        const res = await apiFetch(`${BACKEND_URL}/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: currentAppState.user.email })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            currentAppState.verificationToken = data?.delivery?.token || null;
+            showToast('Verification email resent. Check your inbox for the link to confirm your account.');
+            return;
+        }
+
+        showToast(data.error || 'Could not resend verification email.');
+    } catch (error) {
+        showToast('Could not resend verification email.');
+    }
 }
 
 async function handleLogin() {

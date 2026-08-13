@@ -6,6 +6,10 @@ import time
 import logging
 import urllib.request
 import urllib.error
+
+import smtplib
+from email.mime.text import MIMEText
+
 from functools import wraps
 from contextlib import contextmanager
 
@@ -53,6 +57,29 @@ PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '').strip()
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'http://192.168.202.37:5003/api/paystack/callback')
 FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'http://192.168.202.37:5003/app')
+
+SMTP_EMAIL = os.getenv('SMTP_EMAIL', '').strip().lower()
+SMTP_APP_PASSWORD = os.getenv('SMTP_APP_PASSWORD', '').strip().replace(' ', '')
+
+
+def send_email(to_email, subject, body):
+    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+        logger.warning('SMTP not configured; skipping email send to %s', to_email)
+        return False
+    try:
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = to_email
+
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            server.sendmail(SMTP_EMAIL, [to_email], msg.as_string())
+        return True
+    except Exception:
+        logger.exception('Failed to send email to %s', to_email)
+        return False
 
 FLUTTERWAVE_SECRET_KEY = os.getenv('FLUTTERWAVE_SECRET_KEY', '').strip()
 FLUTTERWAVE_BASE_URL = 'https://api.flutterwave.com'
@@ -479,6 +506,28 @@ def _get_memory_user_by_email(email):
     return next((user for user in _MEMORY_USERS if user['email_address'] == email), None)
 
 
+# def _persist_order(reference, payment_method, metadata=None):
+#     metadata = metadata or {}
+#     user_id = metadata.get('user_id') or session.get('user_id')
+#     items = metadata.get('items') or metadata.get('cart_items') or []
+#     amount = metadata.get('amount')
+#     if amount is None and items:
+#         amount = sum(float(item.get('price', 0)) * int(item.get('quantity', 1)) for item in items)
+
+#     order = {
+#         'id': len(_MEMORY_ORDERS) + 1,
+#         'reference': reference,
+#         'payment_method': payment_method,
+#         'user_id': user_id,
+#         'status': 'paid',
+#         'amount': amount or 0,
+#         'currency': 'NGN',
+#         'items': items,
+#         'created_at': int(time.time())
+#     }
+    _MEMORY_ORDERS.append(order)
+    return order
+
 def _persist_order(reference, payment_method, metadata=None):
     metadata = metadata or {}
     user_id = metadata.get('user_id') or session.get('user_id')
@@ -499,8 +548,29 @@ def _persist_order(reference, payment_method, metadata=None):
         'created_at': int(time.time())
     }
     _MEMORY_ORDERS.append(order)
-    return order
 
+    # Send order confirmation email
+    if user_id:
+        user = next((u for u in _MEMORY_USERS if u['id'] == user_id), None)
+        if user and user.get('email_address'):
+            items_list = "\n".join([f"- {item.get('name', 'Item')} (₦{item.get('price', 0)})" for item in items])
+            email_body = f"""
+            Thank you for your order at Bheemz Kitchen!
+
+            Order Reference: {reference}
+            Amount: ₦{amount}
+            Items:
+            {items_list}
+
+            Your order will be processed shortly.
+            """
+            send_email(
+                user['email_address'],
+                "Your Bheemz Kitchen Order Confirmation",
+                email_body
+            )
+
+    return order
 
 @app.route('/api/cart', methods=['POST'])
 @login_required
@@ -661,13 +731,28 @@ def system_signup():
             'email_verified': False
         }
         _MEMORY_USERS.append(user_record)
+        token, expires_at, verification_record = _issue_token('verify', email, user_id=user_record['id'])
+        _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = verification_record
+        verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
+        email_sent = send_email(
+            email,
+            'Verify your Bheemz Kitchen account',
+            f'Welcome to Bheemz Kitchen! Please confirm your email by clicking this link:\n\n{verify_link}\n\nThis link expires in 1 hour.'
+        )
         user_response = {
             'id': user_record['id'],
             'full_name': user_record['full_name'],
             'email_address': user_record['email_address'],
-            'delivery_address': user_record['delivery_address']
+            'delivery_address': user_record['delivery_address'],
+            'email_verified': user_record.get('email_verified', False)
         }
-        return jsonify({'message': 'Account created securely', 'user': user_response}), 201
+        return jsonify({
+            'message': 'Account created securely',
+            'user': user_response,
+            'verification_token': token,
+            'email_sent': email_sent,
+            'verification_link': verify_link
+        }), 201
 
     try:
         with db_cursor() as (conn, cur):
@@ -677,7 +762,22 @@ def system_signup():
                 (name, phone, email, hashed, address)
             )
             user_record = cur.fetchone()
-        return jsonify({'message': 'Account created securely', 'user': user_record}), 201
+        token, expires_at, verification_record = _issue_token('verify', email, user_id=user_record['id'])
+        _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = verification_record
+        verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
+        email_sent = send_email(
+            email,
+            'Verify your Bheemz Kitchen account',
+            f'Welcome to Bheemz Kitchen! Please confirm your email by clicking this link:\n\n{verify_link}\n\nThis link expires in 1 hour.'
+        )
+        user_record['email_verified'] = False
+        return jsonify({
+            'message': 'Account created securely',
+            'user': user_record,
+            'verification_token': token,
+            'email_sent': email_sent,
+            'verification_link': verify_link
+        }), 201
     except Exception as err:
         if psycopg2 is not None and isinstance(err, psycopg2.IntegrityError):
             return jsonify({'error': 'An account with that email already exists.'}), 409
@@ -699,6 +799,8 @@ def login_user():
             return jsonify({'error': 'Invalid credentials.'}), 401
 
         if bcrypt and bcrypt.checkpw(password.encode('utf-8'), user_record['password_hash'].encode('utf-8')):
+            if not user_record.get('email_verified', False):
+                return jsonify({'error': 'Please verify your email before logging in.'}), 403
             session['user_id'] = user_record['id']
             response_user = {
                 'id': user_record['id'],
@@ -725,6 +827,8 @@ def login_user():
             return jsonify({'error': 'Invalid credentials.'}), 401
 
         if bcrypt and bcrypt.checkpw(password.encode('utf-8'), user_record['password_hash'].encode('utf-8')):
+            if not user_record.get('email_verified', False):
+                return jsonify({'error': 'Please verify your email before logging in.'}), 403
             user_record.pop('password_hash', None)
             session['user_id'] = user_record['id']
             return jsonify({'message': 'Login successful', 'user': user_record}), 200
@@ -752,6 +856,14 @@ def reset_password():
     _MEMORY_PASSWORD_RESET_REQUESTS.append({'email': email, 'token': token, 'created_at': int(time.time()), 'expires_at': expires_at})
     _MEMORY_PASSWORD_RESET_TOKENS[token] = record
 
+    if user:
+        reset_link = f'{FRONTEND_SUCCESS_URL}?reset_token={token}'
+        send_email(
+            email,
+            'Reset your Bheemz Kitchen password',
+            f'Click this link to reset your password:\n\n{reset_link}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.'
+        )
+
     return jsonify({
         'message': 'If this email exists, a reset link has been sent.',
         'delivery': {
@@ -761,7 +873,6 @@ def reset_password():
             'expires_at': expires_at
         }
     }), 200
-
 
 @app.route('/api/reset-password/confirm', methods=['POST'])
 def confirm_reset_password():
@@ -807,10 +918,18 @@ def verify_email():
         'verified_at': None
     }
     _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = record
+
+    verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
+    email_sent = send_email(
+        email,
+        'Verify your Bheemz Kitchen account',
+        f'Welcome to Bheemz Kitchen! Please confirm your email by clicking this link:\n\n{verify_link}\n\nThis link expires in 1 hour.'
+    )
+
     return jsonify({
-        'message': 'Verification token created.',
+        'message': 'Verification email sent.' if email_sent else 'Verification token created (email not sent — SMTP not configured).',
         'delivery': {
-            'provider': 'demo',
+            'provider': 'gmail' if email_sent else 'demo',
             'method': 'email',
             'token': token,
             'expires_at': expires_at
