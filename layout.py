@@ -1129,11 +1129,13 @@ def get_filtered_meals():
                 params.append(category)
 
             cur.execute(query, tuple(params))
-            records = cur.fetchall()
-            for r in records:
-                if isinstance(r.get('labels'), str):
-                    r['labels'] = [x.strip() for x in r['labels'].split(',')]
-        return jsonify(records)
+records = cur.fetchall()
+for r in records:
+    if isinstance(r.get('labels'), str):
+        r['labels'] = [x.strip() for x in r['labels'].split(',')]
+    if r.get('price') is not None:
+        r['price'] = float(r['price'])
+return jsonify(records)
     except Exception as err:
         return safe_error(err, log_msg='Meal fetch failed')
 
