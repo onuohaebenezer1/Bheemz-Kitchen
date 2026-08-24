@@ -41,7 +41,7 @@ if (CapApp) {
 }
 
 function resolveBackendUrl() {
-    return 'https://heave-sasquatch-remover.ngrok-free.dev/api';
+    return 'https://bheemz-kitchen.onrender.com/api';
 }
 
 const BACKEND_URL = resolveBackendUrl();
