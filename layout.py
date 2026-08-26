@@ -526,26 +526,6 @@ def _get_user_by_email(email):
         logger.exception('Could not find user by email')
         return None
 
-
-# def _persist_order(reference, payment_method, metadata=None):
-#     metadata = metadata or {}
-#     user_id = metadata.get('user_id') or session.get('user_id')
-#     items = metadata.get('items') or metadata.get('cart_items') or []
-#     amount = metadata.get('amount')
-#     if amount is None and items:
-#         amount = sum(float(item.get('price', 0)) * int(item.get('quantity', 1)) for item in items)
-
-#     order = {
-#         'id': len(_MEMORY_ORDERS) + 1,
-#         'reference': reference,
-#         'payment_method': payment_method,
-#         'user_id': user_id,
-#         'status': 'paid',
-#         'amount': amount or 0,
-#         'currency': 'NGN',
-#         'items': items,
-#         'created_at': int(time.time())
-#     }
     _MEMORY_ORDERS.append(order)
     return order
 
