@@ -32,6 +32,8 @@ bheemz-kitchen-app
 
 Render PostgreSQL: add the database's internal connection string as `DATABASE_URL` in the web service environment. The app uses PostgreSQL for users, profiles, and meals whenever `DATABASE_URL` is present; memory storage is only used when no database is configured.
 
+Set `FRONTEND_SUCCESS_URL=https://bheemz-kitchen-2.onrender.com` and remove any old `FRONTEND_SUCCESS_URL` value containing `192.168.`, `localhost`, or another private address. This is the address used in verification and payment links.
+
 Set these environment variables on the server (Render: **Dashboard > Environment**):
 
 ```text
