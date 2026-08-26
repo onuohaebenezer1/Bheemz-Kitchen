@@ -8,9 +8,6 @@ import urllib.request
 import urllib.error
 from urllib.parse import urlparse
 
-import smtplib
-from email.mime.text import MIMEText
-
 from functools import wraps
 from contextlib import contextmanager
 
@@ -58,30 +55,43 @@ PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
 FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
-SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or '').strip().lower()
-SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or '').strip().replace(' ', '')
-SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_FROM = os.getenv('SMTP_FROM', SMTP_EMAIL).strip().lower()
+RESEND_API_KEY = (os.getenv('RESEND_API_KEY') or '').strip()
+RESEND_FROM = (os.getenv('RESEND_FROM') or 'Bheemz Kitchen <onboarding@resend.dev>').strip()
+RESEND_API_URL = 'https://api.resend.com/emails'
 DATABASE_URL = (os.getenv('DATABASE_URL') or os.getenv('INTERNAL_DATABASE_URL') or '').strip()
 DATABASE_ENABLED = psycopg2 is not None and bool(DATABASE_URL or os.getenv('DB_HOST', '').strip())
 
 
 def send_email(to_email, subject, body):
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
-        logger.warning('SMTP_EMAIL and SMTP_APP_PASSWORD are required; email not sent to %s', to_email)
+    if not RESEND_API_KEY:
+        logger.warning('RESEND_API_KEY is required; email not sent to %s', to_email)
         return False
     try:
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = SMTP_FROM
-        msg['To'] = to_email
+        payload = json.dumps({
+            'from': RESEND_FROM,
+            'to': [to_email],
+            'subject': subject,
+            'text': body
+        }).encode('utf-8')
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_FROM, [to_email], msg.as_string())
-        return True
+        request_obj = urllib.request.Request(
+            RESEND_API_URL,
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {RESEND_API_KEY}',
+                'Content-Type': 'application/json'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(request_obj, timeout=20) as response:
+            if 200 <= response.status < 300:
+                return True
+            logger.warning('Resend returned status %s for %s', response.status, to_email)
+            return False
+    except urllib.error.HTTPError as exc:
+        body_text = exc.read().decode('utf-8', errors='replace')
+        logger.error('Resend API error sending to %s: %s %s', to_email, exc.code, body_text)
+        return False
     except Exception:
         logger.exception('Failed to send email to %s', to_email)
         return False
