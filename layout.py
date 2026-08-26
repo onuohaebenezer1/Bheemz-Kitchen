@@ -1117,28 +1117,27 @@ def get_filtered_meals():
             filtered = [meal for meal in filtered if meal.get('meal_category') == category]
         return jsonify(filtered)
 
-    try:
-        with db_cursor() as (conn, cur):
-            query = 'SELECT * FROM meals WHERE 1=1'
-            params = []
-            if challenge != 'None':
-                query += ' AND health_challenge_tag = %s'
-                params.append(challenge)
-            if category != 'All':
-                query += ' AND meal_category = %s'
-                params.append(category)
+try:
+    with db_cursor() as (conn, cur):
+        query = 'SELECT * FROM meals WHERE 1=1'
+        params = []
+        if challenge != 'None':
+            query += ' AND health_challenge_tag = %s'
+            params.append(challenge)
+        if category != 'All':
+            query += ' AND meal_category = %s'
+            params.append(category)
 
-            cur.execute(query, tuple(params))
-records = cur.fetchall()
-for r in records:
-    if isinstance(r.get('labels'), str):
-        r['labels'] = [x.strip() for x in r['labels'].split(',')]
-    if r.get('price') is not None:
-        r['price'] = float(r['price'])
-return jsonify(records)
-    except Exception as err:
-        return safe_error(err, log_msg='Meal fetch failed')
-
+        cur.execute(query, tuple(params))
+        records = cur.fetchall()  # <-- NOW INSIDE the `with` block
+        for r in records:
+            if isinstance(r.get('labels'), str):
+                r['labels'] = [x.strip() for x in r['labels'].split(',')]
+            if r.get('price') is not None:
+                r['price'] = float(r['price'])
+        return jsonify(records)
+except Exception as err:
+    return safe_error(err, log_msg='Meal fetch failed')
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '5003'))
