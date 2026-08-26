@@ -49,7 +49,6 @@ if not app.secret_key:
 
 # Lock CORS down to known frontend origin(s) instead of allowing every origin.
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv('ALLOWED_ORIGINS', '').split(',') if o.strip()]
-# CORS(app, origins=ALLOWED_ORIGINS or ['http://127.0.0.1:5500', 'http://127.0.0.1:8080', 'http://localhost', 'http://localhost:5003', 'http://172.17.8.82:5003', 'capacitor://localhost'], supports_credentials=True)
 CORS(app, origins=ALLOWED_ORIGINS or '*', supports_credentials=True)
 
 DEBUG_MODE = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
@@ -59,12 +58,12 @@ PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'http://192.168.202.37:5003/api/paystack/callback')
 FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'http://192.168.202.37:5003/app')
 
-SMTP_EMAIL = os.getenv('SMTP_EMAIL', '').strip().lower()
-SMTP_APP_PASSWORD = os.getenv('SMTP_APP_PASSWORD', '').strip().replace(' ', '')
+SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or '').strip().lower()
+SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or '').strip().replace(' ', '')
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_FROM = os.getenv('SMTP_FROM', SMTP_EMAIL).strip().lower()
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://bheemz_kitchen_db_user:ahuruZpP6EpYJKhNP8LqPLu8bx8rDz4x@dpg-da655cojo6nc73edfi60-a/bheemz_kitchen_db').strip() or os.getenv('INTERNAL_DATABASE_URL', 'postgresql://bheemz_kitchen_db_user:ahuruZpP6EpYJKhNP8LqPLu8bx8rDz4x@dpg-da655cojo6nc73edfi60-a/bheemz_kitchen_db').strip()
+DATABASE_URL = (os.getenv('DATABASE_URL') or os.getenv('INTERNAL_DATABASE_URL') or '').strip()
 DATABASE_ENABLED = psycopg2 is not None and bool(DATABASE_URL or os.getenv('DB_HOST', '').strip())
 
 
@@ -512,6 +511,22 @@ def _get_memory_user_by_email(email):
     return next((user for user in _MEMORY_USERS if user['email_address'] == email), None)
 
 
+def _get_user_by_email(email):
+    user = _get_memory_user_by_email(email)
+    if user or not DATABASE_ENABLED:
+        return user
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                'SELECT id, full_name, email_address, delivery_address, phone_number, password_hash, email_verified FROM users WHERE email_address = %s',
+                (email,)
+            )
+            return cur.fetchone()
+    except Exception:
+        logger.exception('Could not find user by email')
+        return None
+
+
 # def _persist_order(reference, payment_method, metadata=None):
 #     metadata = metadata or {}
 #     user_id = metadata.get('user_id') or session.get('user_id')
@@ -864,7 +879,7 @@ def reset_password():
     if not email:
         return jsonify({'error': 'Email is required.'}), 400
 
-    user = _get_memory_user_by_email(email)
+    user = _get_user_by_email(email)
     token, expires_at, record = _issue_token('reset', email, user_id=user['id'] if user else None)
     _MEMORY_PASSWORD_RESET_REQUESTS.append({'email': email, 'token': token, 'created_at': int(time.time()), 'expires_at': expires_at})
     _MEMORY_PASSWORD_RESET_TOKENS[token] = record
@@ -903,14 +918,22 @@ def confirm_reset_password():
     if record['expires_at'] < int(time.time()):
         return jsonify({'error': 'Invalid or expired reset token.'}), 400
 
-    user = _get_memory_user_by_email(record['email'])
+    user = _get_user_by_email(record['email'])
     if not user:
         return jsonify({'error': 'Invalid or expired reset token.'}), 400
 
     if bcrypt is None:
         return jsonify({'error': 'Password hashing library is unavailable.'}), 500
 
-    user['password_hash'] = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor(dict_cursor=False) as (conn, cur):
+                cur.execute('UPDATE users SET password_hash = %s WHERE id = %s', (hashed_password, user['id']))
+        except Exception as err:
+            return safe_error(err, log_msg='Password reset update failed')
+    else:
+        user['password_hash'] = hashed_password
     record['used'] = True
     return jsonify({'message': 'Password reset successful.'}), 200
 
@@ -922,7 +945,7 @@ def verify_email():
     if not email:
         return jsonify({'error': 'Email is required.'}), 400
 
-    user = _get_memory_user_by_email(email)
+    user = _get_user_by_email(email)
     token, expires_at, record = _issue_token('verify', email, user_id=user['id'] if user else None)
     _MEMORY_EMAIL_VERIFICATIONS[email] = {
         'verified': False,
@@ -964,11 +987,18 @@ def confirm_email_verification():
     if record['expires_at'] < int(time.time()):
         return jsonify({'error': 'Invalid or expired verification token.'}), 400
 
-    user = _get_memory_user_by_email(record['email'])
+    user = _get_user_by_email(record['email'])
     if not user:
         return jsonify({'error': 'Invalid or expired verification token.'}), 400
 
-    user['email_verified'] = True
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor(dict_cursor=False) as (conn, cur):
+                cur.execute('UPDATE users SET email_verified = TRUE WHERE id = %s', (user['id'],))
+        except Exception as err:
+            return safe_error(err, log_msg='Email verification update failed')
+    else:
+        user['email_verified'] = True
     _MEMORY_EMAIL_VERIFICATIONS[record['email']] = {
         'verified': True,
         'verification_id': token,
