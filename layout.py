@@ -54,12 +54,12 @@ CORS(app, origins=ALLOWED_ORIGINS or '*', supports_credentials=True)
 DEBUG_MODE = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '').strip()
-PAYSTACK_BASE_URL = 'https://api.paystack.co'
-PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'http://192.168.202.37:5003/api/paystack/callback')
-FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'http://192.168.202.37:5003/app')
+PAYSTACK_BASE_URL = 'https://bheemz-kitchen-2.onrender.com'
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
+FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
-SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or '').strip().lower()
-SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or '').strip().replace(' ', '')
+SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or os.getenv('SMTP_USER') or '').strip().lower()
+SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or os.getenv('SMTP_PASSWORD') or '').strip().replace(' ', '')
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_FROM = os.getenv('SMTP_FROM', SMTP_EMAIL).strip().lower()

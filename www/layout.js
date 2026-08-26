@@ -41,7 +41,7 @@ if (CapApp) {
 }
 
 function resolveBackendUrl() {
-    return 'https://bheemz-kitchen.onrender.com/api';
+    return 'https://bheemz-kitchen-2.onrender.com/api';
 }
 
 const BACKEND_URL = resolveBackendUrl();
@@ -327,7 +327,8 @@ async function completeEmailVerification() {
 }
 
 async function resendVerification() {
-    if (!currentAppState.user || !currentAppState.user.email) {
+    const email = currentAppState.user?.email || currentAppState.user?.email_address;
+    if (!email) {
         showToast('No registered email found to resend verification to.');
         return;
     }
@@ -336,19 +337,25 @@ async function resendVerification() {
         const res = await apiFetch(`${BACKEND_URL}/verify-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: currentAppState.user.email })
+            body: JSON.stringify({ email })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (res.ok) {
             currentAppState.verificationToken = data?.delivery?.token || null;
-            showToast('Verification email resent. Check your inbox for the link to confirm your account.');
+            if (data.email_sent) {
+                showToast('Verification email resent. Check your inbox for the link to confirm your account.');
+            } else if (data.verification_link) {
+                showToast(`SMTP email was not sent. Open this verification link: ${data.verification_link}`);
+            } else {
+                showToast(data.message || 'SMTP email was not sent. Check the Render SMTP settings.');
+            }
             return;
         }
 
         showToast(data.error || 'Could not resend verification email.');
     } catch (error) {
-        showToast('Could not resend verification email.');
+        showToast(error.message || 'Could not resend verification email.');
     }
 }
 
