@@ -1000,7 +1000,7 @@ def confirm_email_verification():
         'verified_at': int(time.time())
     }
     record['used'] = True
-    return jsonify({'message': 'Email verification confirmed.'}), 200
+    return jsonify({'message': 'Email verification confirmed.', 'email': record['email']}), 200
 
 
 @app.route('/api/profile', methods=['POST'])

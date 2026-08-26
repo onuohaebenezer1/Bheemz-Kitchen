@@ -300,12 +300,18 @@ async function completeEmailVerification() {
             return;
         }
 
-        if (currentAppState.user) {
-            const account = currentAppState.savedAccounts.find(acc => acc.email === currentAppState.user.email);
+        // Prefer the email the backend just verified (works even when this
+        // link is opened fresh, with no active session yet) and fall back
+        // to the current session's email if the backend didn't send one.
+        const verifiedEmail = data.email || currentAppState.user?.email;
+        if (verifiedEmail) {
+            const account = currentAppState.savedAccounts.find(acc => acc.email === verifiedEmail);
             if (account) {
                 account.verified = true;
                 saveAccounts();
             }
+        }
+        if (currentAppState.user && currentAppState.user.email === verifiedEmail) {
             currentAppState.user.verified = true;
             currentAppState.user.email_verified = true;
             saveSession();
