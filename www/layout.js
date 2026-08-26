@@ -1,5 +1,18 @@
 const Browser = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.Browser : null;
 
+// In the native Android/iOS app, Browser is provided by Capacitor. When
+// running in an ordinary web browser tab (e.g. testing before packaging the
+// app), window.Capacitor doesn't exist, so Browser is null and calling
+// Browser.open() directly throws. This falls back to a normal new tab in
+// that case, so checkout works in both environments.
+async function openExternalUrl(url) {
+    if (Browser && typeof Browser.open === 'function') {
+        await Browser.open({ url });
+    } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+}
+
 const CapApp = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.App : null;
 let lastBackPressTime = 0;
 
@@ -852,7 +865,7 @@ async function startPaystackCheckout() {
         currentAppState.paymentReference = data.reference;
         saveSession();
 
-        await Browser.open({ url: data.authorization_url });
+        await openExternalUrl(data.authorization_url);
         showToast('Complete your payment, then return here and tap "I\'ve completed payment" in your cart.');
         renderCartView(document.getElementById('main-content-view'));
 
@@ -905,7 +918,7 @@ async function startFlutterwaveCheckout() {
         currentAppState.paymentReference = data.reference;
         saveSession();
 
-        await Browser.open({ url: data.authorization_url });
+        await openExternalUrl(data.authorization_url);
         showToast('Complete your payment, then return here and tap "I\'ve completed payment" in your cart.');
         renderCartView(document.getElementById('main-content-view'));
 
