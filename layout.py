@@ -49,7 +49,7 @@ if not app.secret_key:
 # Lock CORS down to known frontend origin(s) instead of allowing every origin.
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv('ALLOWED_ORIGINS', '').split(',') if o.strip()]
 # CORS(app, origins=ALLOWED_ORIGINS or ['http://127.0.0.1:5500', 'http://127.0.0.1:8080', 'http://localhost', 'http://localhost:5003', 'http://172.17.8.82:5003', 'capacitor://localhost'], supports_credentials=True)
-CORS(app, origins="*", supports_credentials=False)
+CORS(app, origins=ALLOWED_ORIGINS or '*', supports_credentials=True)
 
 DEBUG_MODE = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
@@ -1117,27 +1117,28 @@ def get_filtered_meals():
             filtered = [meal for meal in filtered if meal.get('meal_category') == category]
         return jsonify(filtered)
 
-try:
-    with db_cursor() as (conn, cur):
-        query = 'SELECT * FROM meals WHERE 1=1'
-        params = []
-        if challenge != 'None':
-            query += ' AND health_challenge_tag = %s'
-            params.append(challenge)
-        if category != 'All':
-            query += ' AND meal_category = %s'
-            params.append(category)
+    try:
+        with db_cursor() as (conn, cur):
+            query = 'SELECT * FROM meals WHERE 1=1'
+            params = []
+            if challenge != 'None':
+                query += ' AND health_challenge_tag = %s'
+                params.append(challenge)
+            if category != 'All':
+                query += ' AND meal_category = %s'
+                params.append(category)
 
-        cur.execute(query, tuple(params))
-        records = cur.fetchall()  # <-- NOW INSIDE the `with` block
-        for r in records:
-            if isinstance(r.get('labels'), str):
-                r['labels'] = [x.strip() for x in r['labels'].split(',')]
-            if r.get('price') is not None:
-                r['price'] = float(r['price'])
-        return jsonify(records)
-except Exception as err:
-    return safe_error(err, log_msg='Meal fetch failed')
+            cur.execute(query, tuple(params))
+            records = cur.fetchall()
+            for record in records:
+                if isinstance(record.get('labels'), str):
+                    record['labels'] = [item.strip() for item in record['labels'].split(',')]
+                if record.get('price') is not None:
+                    record['price'] = float(record['price'])
+                record['category'] = record.get('meal_category', 'Other')
+            return jsonify(records)
+    except Exception as err:
+        return safe_error(err, log_msg='Meal fetch failed')
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '5003'))

@@ -47,6 +47,7 @@ function resolveBackendUrl() {
 const BACKEND_URL = resolveBackendUrl();
 
 async function apiFetch(url, options = {}) {
+    options.credentials = 'include';
     options.headers = {
         ...(options.headers || {}),
         'ngrok-skip-browser-warning': 'true'
