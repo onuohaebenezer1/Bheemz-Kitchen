@@ -55,6 +55,10 @@ PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
 FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
+# Render's free web services block outbound traffic on SMTP ports (25, 465, 587),
+# so raw smtplib connections fail there with "OSError: [Errno 101] Network is
+# unreachable" regardless of how correct the SMTP credentials are. Resend's API
+# is plain HTTPS (port 443), which isn't blocked, so we send through that instead.
 RESEND_API_KEY = (os.getenv('RESEND_API_KEY') or '').strip()
 RESEND_FROM = (os.getenv('RESEND_FROM') or 'Bheemz Kitchen <onboarding@resend.dev>').strip()
 RESEND_API_URL = 'https://api.resend.com/emails'
