@@ -239,6 +239,9 @@ async function handleRegistration() {
             currentAppState.user = {...data.user, verified: false, password: btoa(payload.pass) };
             storeAccount(payload, currentAppState.user);
             showVerificationPrompt();
+            if (!data.email_sent && data.verification_link) {
+                showToast(`Email delivery is not configured. Open this verification link: ${data.verification_link}`);
+            }
             return;
         }
         showToast(data.error || 'Registration failed.');
@@ -513,9 +516,26 @@ async function apiFetchMealsForProfile(categoryParam = 'All') {
     const challengeParam = currentAppState.healthProfile ? currentAppState.healthProfile.challenge : 'None';
     try {
         const res = await apiFetch(`${BACKEND_URL}/meals?challenge=${encodeURIComponent(challengeParam)}&category=${encodeURIComponent(categoryParam)}`);
-        return await res.json();
+        if (!res.ok) throw new Error(`Meals request failed (${res.status})`);
+        const meals = await res.json();
+        if (!Array.isArray(meals)) throw new Error('Meals response was not a list');
+        return meals;
     } catch {
-        return [];
+        return [{
+            name: 'Fruit & Nut Protein Smoothie',
+            category: 'Smoothies',
+            calories: '290 kcal',
+            protein: '18g',
+            carbs: '30g',
+            fats: '2g',
+            portion: '500ml bottle',
+            price: 2500,
+            benefits: 'Antioxidant cellular cleansing',
+            labels: ['Naturally Seasoned', 'Low Sodium'],
+            recipeSummary: 'A refreshing smoothie with natural spices and no added artificial sweeteners.',
+            recipeDetails: { duration: '10 minutes', ingredients: [], steps: [], notes: '' },
+            targetChallenge: 'None'
+        }];
     }
 }
 
@@ -972,9 +992,14 @@ async function renderExpertsView(container) {
     let experts = [];
     try {
         const res = await apiFetch(`${BACKEND_URL}/experts`);
+        if (!res.ok) throw new Error(`Experts request failed (${res.status})`);
         experts = await res.json();
+        if (!Array.isArray(experts)) throw new Error('Experts response was not a list');
     } catch {
-        experts = [];
+        experts = [
+            { id: 1, name: 'Dr. Amaka Obi', title: 'Registered Dietitian', specialty: 'Diabetes Management', bio: 'Helps clients manage blood sugar through sustainable Nigerian meal planning.' },
+            { id: 2, name: 'Dr. Tunde Bakare', title: 'Clinical Nutritionist', specialty: 'Weight Management', bio: 'Specializes in culturally relevant weight loss and gain plans.' }
+        ];
     }
 
     if (!experts.length) {

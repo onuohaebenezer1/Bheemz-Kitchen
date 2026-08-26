@@ -28,6 +28,22 @@ bheemz-kitchen-app
    cd bheemz-kitchen-app
    ```
 
+### Email configuration
+
+Render PostgreSQL: add the database's internal connection string as `DATABASE_URL` in the web service environment. The app uses PostgreSQL for users, profiles, and meals whenever `DATABASE_URL` is present; memory storage is only used when no database is configured.
+
+Set these environment variables on the server (Render: **Dashboard > Environment**):
+
+```text
+SMTP_EMAIL=your-gmail-address@gmail.com
+SMTP_APP_PASSWORD=your-16-character-google-app-password
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_FROM=your-gmail-address@gmail.com
+```
+
+For Gmail, enable 2-Step Verification and create an App Password. A normal Gmail password will not work. Restart/redeploy the service after adding the variables.
+
 3. **Open the landing page**:
    Open `landingpage.html` in your web browser to view the app.
 

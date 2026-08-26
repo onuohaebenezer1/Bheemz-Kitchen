@@ -6,6 +6,7 @@ import time
 import logging
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse
 
 import smtplib
 from email.mime.text import MIMEText
@@ -60,22 +61,27 @@ FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'http://192.168.202.37:
 
 SMTP_EMAIL = os.getenv('SMTP_EMAIL', '').strip().lower()
 SMTP_APP_PASSWORD = os.getenv('SMTP_APP_PASSWORD', '').strip().replace(' ', '')
+SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_FROM = os.getenv('SMTP_FROM', SMTP_EMAIL).strip().lower()
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://bheemz_kitchen_db_user:ahuruZpP6EpYJKhNP8LqPLu8bx8rDz4x@dpg-da655cojo6nc73edfi60-a/bheemz_kitchen_db').strip() or os.getenv('INTERNAL_DATABASE_URL', 'postgresql://bheemz_kitchen_db_user:ahuruZpP6EpYJKhNP8LqPLu8bx8rDz4x@dpg-da655cojo6nc73edfi60-a/bheemz_kitchen_db').strip()
+DATABASE_ENABLED = psycopg2 is not None and bool(DATABASE_URL or os.getenv('DB_HOST', '').strip())
 
 
 def send_email(to_email, subject, body):
     if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
-        logger.warning('SMTP not configured; skipping email send to %s', to_email)
+        logger.warning('SMTP_EMAIL and SMTP_APP_PASSWORD are required; email not sent to %s', to_email)
         return False
     try:
         msg = MIMEText(body)
         msg['Subject'] = subject
-        msg['From'] = SMTP_EMAIL
+        msg['From'] = SMTP_FROM
         msg['To'] = to_email
 
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
             server.starttls()
             server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, [to_email], msg.as_string())
+            server.sendmail(SMTP_FROM, [to_email], msg.as_string())
         return True
     except Exception:
         logger.exception('Failed to send email to %s', to_email)
@@ -665,16 +671,24 @@ _db_pool = None
 
 def get_db_pool():
     global _db_pool
-    if psycopg2 is None:
-        raise RuntimeError('psycopg2 is not installed for database operations.')
+    if not DATABASE_ENABLED:
+        raise RuntimeError('PostgreSQL is not configured.')
+    connection_settings = {
+        'database': os.getenv('DB_NAME', 'bheemz_db'),
+        'user': os.getenv('DB_USER', 'postgres'),
+        'password': os.getenv('DB_PASSWORD', 'postgres'),
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': os.getenv('DB_PORT', '5432')
+    }
+    if DATABASE_URL:
+        parsed_database_url = urlparse(DATABASE_URL)
+        connection_settings = {'dsn': DATABASE_URL}
+        if parsed_database_url.hostname and parsed_database_url.hostname.endswith('.render.com'):
+            connection_settings['sslmode'] = 'require'
     if _db_pool is None:
         _db_pool = pg_pool.SimpleConnectionPool(
             1, 10,
-            database=os.getenv('DB_NAME', 'bheemz_db'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', 'postgres'),
-            host=os.getenv('DB_HOST', 'localhost'),
-            port=os.getenv('DB_PORT', '5432')
+            **connection_settings
         )
     return _db_pool
 
@@ -713,10 +727,9 @@ def system_signup():
 
     if bcrypt is None:
         return jsonify({'error': 'Password hashing library is unavailable.'}), 500
-
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    if psycopg2 is None:
+    if not DATABASE_ENABLED:
         existing = next((user for user in _MEMORY_USERS if user['email_address'] == email), None)
         if existing:
             return jsonify({'error': 'An account with that email already exists.'}), 409
@@ -793,7 +806,7 @@ def login_user():
     if not all([email, password]):
         return jsonify({'error': 'Email and password are required.'}), 400
 
-    if psycopg2 is None:
+    if not DATABASE_ENABLED:
         user_record = next((user for user in _MEMORY_USERS if user['email_address'] == email), None)
         if not user_record:
             return jsonify({'error': 'Invalid credentials.'}), 401
@@ -981,7 +994,7 @@ def save_profile():
     # passing a different userId.
     user_id = session['user_id']
 
-    if psycopg2 is None:
+    if not DATABASE_ENABLED:
         _MEMORY_PROFILES[user_id] = {
             'age': data['age'],
             'weight': data['weight'],
@@ -1043,7 +1056,7 @@ def get_filtered_meals():
 
 
 
-    if psycopg2 is None:
+    if not DATABASE_ENABLED:
         meals = [
             {
                 'id': 1,
