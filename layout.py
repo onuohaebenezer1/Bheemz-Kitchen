@@ -55,14 +55,11 @@ DEBUG_MODE = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '').strip()
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
-PUBLIC_APP_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com').strip().rstrip('/')
-# if any(host in PUBLIC_APP_URL.lower() for host in ('localhost', '127.0.0.1', '192.168.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.')):
-    PUBLIC_APP_URL = 'https://bheemz-kitchen-2.onrender.com'
-FRONTEND_SUCCESS_URL = PUBLIC_APP_URL
-PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', f'{PUBLIC_APP_URL}/api/paystack/callback').strip()
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
+FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
-SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or os.getenv('SMTP_USER') or '').strip().lower()
-SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or os.getenv('SMTP_PASSWORD') or '').strip().replace(' ', '')
+SMTP_EMAIL = (os.getenv('SMTP_EMAIL') or os.getenv('GMAIL_EMAIL') or '').strip().lower()
+SMTP_APP_PASSWORD = (os.getenv('SMTP_APP_PASSWORD') or os.getenv('GMAIL_APP_PASSWORD') or '').strip().replace(' ', '')
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.gmail.com').strip()
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_FROM = os.getenv('SMTP_FROM', SMTP_EMAIL).strip().lower()
@@ -91,7 +88,8 @@ def send_email(to_email, subject, body):
 
 FLUTTERWAVE_SECRET_KEY = os.getenv('FLUTTERWAVE_SECRET_KEY', '').strip()
 FLUTTERWAVE_BASE_URL = 'https://api.flutterwave.com'
-FLUTTERWAVE_CALLBACK_URL = os.getenv('FLUTTERWAVE_CALLBACK_URL', f'{PUBLIC_APP_URL}/api/flutterwave/callback').strip()
+FLUTTERWAVE_CALLBACK_URL = os.getenv('FLUTTERWAVE_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
+FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
 REFERENCE_RE = re.compile(r'^[A-Za-z0-9_\-]{1,64}$')
 
