@@ -454,11 +454,25 @@ body {
     height: 60px;
     background: var(--white);
     display: flex;
-    justify-content: space-around;
     align-items: center;
     border-top: 1px solid #E2E8F0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 8px;
+    gap: 4px;
 }
 
+.mobile-navbar-nav::-webkit-scrollbar{
+    display: none;
+}
+
+.nav-control{
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
 
 /* Dark theme overrides */
 
