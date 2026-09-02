@@ -33,7 +33,7 @@ body {
 }
 
 .modal-overlay {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
@@ -54,6 +54,11 @@ body {
     border-radius: 20px;
     text-align: center;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    max-height: 90vh;
+    max-height: 90dvh; /* dvh accounts for mobile browser/notch UI, same as nav fix */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
 }
 
 .auth-card h2 {
@@ -715,6 +720,13 @@ body.dark .user-welcome {
     color: var(--bheemz-orange);
     font-size: 13px;
     margin-top: 12px;
+}
+
+@media (max-width: 480px) {
+    .auth-card {
+        max-height: calc(100dvh - 40px); /* leaves breathing room, accounts for the 10px padding on .modal-overlay each side */
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
 }
 
 @media (max-width: 480px) {

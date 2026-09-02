@@ -365,7 +365,7 @@ async function resendVerification() {
             if (data.email_sent) {
                 showToast('Verification email resent. Check your inbox for the link to confirm your account.');
             } else if (data.verification_link) {
-                showToast(`SMTP email was not sent. Open this verification link: ${data.verification_link}`);
+                showToast(`Email was not sent. Open this verification link: ${data.verification_link}`);
             } else {
                 showToast(data.message || 'SMTP email was not sent. Check the Render SMTP settings.');
             }
@@ -433,7 +433,7 @@ async function handleLogin() {
 }
 
 function askProfileContinue() {
-    const continueWithProfile = confirm('A saved health profile was found. Select OK to continue with it, or Cancel to update your profile.');
+    const continueWithProfile = showToast('A saved health profile was found. Select OK to continue with it, or Cancel to update your profile.');
     if (continueWithProfile) {
         switchView('dashboard');
     } else {
