@@ -79,14 +79,15 @@ def send_email(to_email, subject, body):
         }).encode('utf-8')
 
         request_obj = urllib.request.Request(
-            RESEND_API_URL,
-            data=payload,
-            headers={
-                'Authorization': f'Bearer {RESEND_API_KEY}',
-                'Content-Type': 'application/json'
-            },
-            method='POST'
-        )
+        RESEND_API_URL,
+        data=payload,
+        headers={
+        'Authorization': f'Bearer {RESEND_API_KEY}',
+        'Content-Type': 'application/json',
+        'User-Agent': 'BheemzKitchen/1.0 (+https://bheemzkitchen.example)'
+        },
+        method='POST'
+    )
         with urllib.request.urlopen(request_obj, timeout=20) as response:
             if 200 <= response.status < 300:
                 return True
