@@ -7,6 +7,8 @@ import logging
 import urllib.request
 import urllib.error
 from urllib.parse import urlparse
+import random
+from datetime import date
 
 from functools import wraps
 from contextlib import contextmanager
@@ -55,10 +57,6 @@ PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'https://bheemz-kitchen-2.onrender.com')
 FRONTEND_SUCCESS_URL = os.getenv('FRONTEND_SUCCESS_URL', 'https://bheemz-kitchen-2.onrender.com')
 
-# Render's free web services block outbound traffic on SMTP ports (25, 465, 587),
-# so raw smtplib connections fail there with "OSError: [Errno 101] Network is
-# unreachable" regardless of how correct the SMTP credentials are. Resend's API
-# is plain HTTPS (port 443), which isn't blocked, so we send through that instead.
 RESEND_API_KEY = (os.getenv('RESEND_API_KEY') or '').strip()
 RESEND_FROM = (os.getenv('RESEND_FROM') or 'Bheemz Kitchen <onboarding@resend.dev>').strip()
 RESEND_API_URL = 'https://api.resend.com/emails'
@@ -759,9 +757,6 @@ def bank_balance():
     account = _get_user_account_record(user_id)
     return jsonify({'status': 'success', 'balance': account['balance'], 'currency': account['currency']}), 200
 
-
-# --- Database -----------------------------------------------------------
-
 _db_pool = None
 
 
@@ -1173,6 +1168,30 @@ def request_consultation():
 
     return jsonify({'status': 'success', 'message': 'Request received — an expert will reach out within 24 hours.', 'request': request_record}), 201
 
+MEALS_PER_DAY_LIMIT = int(os.getenv('MEALS_PER_DAY_LIMIT', '6'))
+
+
+def _apply_daily_rotation(meals, category_key='meal_category'):
+    """Pick a deterministic daily subset per category so the menu looks
+    different from day to day without needing manual scheduling. Meals are
+    grouped by category, shuffled with a seed tied to today's date (stable
+    for everyone all day, changes at midnight), then capped at
+    MEALS_PER_DAY_LIMIT per category. If a category has fewer meals than
+    the limit, all of them are shown - the cap only kicks in once the
+    catalog is large enough for it to matter."""
+    today_seed = date.today().isoformat()
+    by_category = {}
+    for meal in meals:
+        cat = meal.get(category_key) or 'Other'
+        by_category.setdefault(cat, []).append(meal)
+
+    rotated = []
+    for cat, cat_meals in by_category.items():
+        rng = random.Random(f'{today_seed}-{cat}')
+        shuffled = cat_meals[:]
+        rng.shuffle(shuffled)
+        rotated.extend(shuffled[:MEALS_PER_DAY_LIMIT])
+    return rotated
 
 @app.route('/api/meals', methods=['GET'])
 def get_filtered_meals():
@@ -1251,7 +1270,7 @@ def get_filtered_meals():
             filtered = [meal for meal in filtered if meal.get('targetChallenge') == challenge or meal.get('targetChallenge') == 'None']
         if category != 'All':
             filtered = [meal for meal in filtered if meal.get('meal_category') == category]
-        return jsonify(filtered)
+        return jsonify(_apply_daily_rotation(filtered))
 
     try:
         with db_cursor() as (conn, cur):
@@ -1272,7 +1291,7 @@ def get_filtered_meals():
                 if record.get('price') is not None:
                     record['price'] = float(record['price'])
                 record['category'] = record.get('meal_category', 'Other')
-            return jsonify(records)
+            return jsonify(_apply_daily_rotation(records))
     except Exception as err:
         return safe_error(err, log_msg='Meal fetch failed')
 
