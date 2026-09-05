@@ -481,29 +481,53 @@ def login_required(view):
 
 
 def _get_user_account_record(user_id):
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute('SELECT * FROM bank_accounts WHERE user_id = %s', (user_id,))
+                account = cur.fetchone()
+                if account is None:
+                    cur.execute(
+                        'INSERT INTO bank_accounts (user_id, account_id, balance, currency) VALUES (%s, %s, 250000, %s) RETURNING *',
+                        (user_id, f'bank-account-{user_id}', 'NGN')
+                    )
+                    account = cur.fetchone()
+                return account
+        except Exception:
+            logger.exception('Bank account lookup failed')
     account = _MEMORY_BANK_ACCOUNTS.get(user_id)
     if account is None:
-        account = {
-            'user_id': user_id,
-            'account_id': f'bank-account-{user_id}',
-            'balance': 250000,
-            'currency': 'NGN'
-        }
+        account = {'user_id': user_id, 'account_id': f'bank-account-{user_id}', 'balance': 250000, 'currency': 'NGN'}
         _MEMORY_BANK_ACCOUNTS[user_id] = account
     return account
+
+
+def _update_account_balance(user_id, new_balance):
+    if DATABASE_ENABLED:
+        with db_cursor(dict_cursor=False) as (conn, cur):
+            cur.execute('UPDATE bank_accounts SET balance = %s WHERE user_id = %s', (new_balance, user_id))
+    else:
+        _MEMORY_BANK_ACCOUNTS[user_id]['balance'] = new_balance
 
 
 def _record_bank_transaction(transaction_type, user_id, amount, account_id, status='completed'):
     tx = {
         'transaction_id': f'{transaction_type}-{int(time.time())}-{user_id}',
-        'user_id': user_id,
-        'type': transaction_type,
-        'status': status,
-        'amount': amount,
-        'account': account_id,
-        'created_at': int(time.time())
+        'user_id': user_id, 'type': transaction_type, 'status': status,
+        'amount': amount, 'account': account_id, 'created_at': int(time.time())
     }
-    _MEMORY_BANK_TRANSACTIONS.append(tx)
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor(dict_cursor=False) as (conn, cur):
+                cur.execute(
+                    '''INSERT INTO bank_transactions (transaction_id, user_id, type, status, amount, account, created_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)''',
+                    (tx['transaction_id'], user_id, transaction_type, status, amount, account_id, tx['created_at'])
+                )
+        except Exception:
+            logger.exception('Could not persist bank transaction')
+    else:
+        _MEMORY_BANK_TRANSACTIONS.append(tx)
     return tx
 
 
@@ -519,6 +543,44 @@ def _issue_token(prefix, email, user_id=None):
         'used': False
     }
     return token, expires_at, record
+
+
+def _store_token(table, token, record):
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor(dict_cursor=False) as (conn, cur):
+                cur.execute(
+                    f'INSERT INTO {table} (token, email, user_id, expires_at, created_at, used) VALUES (%s, %s, %s, %s, %s, %s)',
+                    (token, record['email'], record['user_id'], record['expires_at'], record['created_at'], record['used'])
+                )
+            return
+        except Exception:
+            logger.exception('Could not persist token to database')
+    (_MEMORY_EMAIL_VERIFICATION_TOKENS if table == 'email_verification_tokens' else _MEMORY_PASSWORD_RESET_TOKENS)[token] = record
+
+
+def _get_token(table, token):
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(f'SELECT * FROM {table} WHERE token = %s', (token,))
+                return cur.fetchone()
+        except Exception:
+            logger.exception('Could not read token from database')
+    return (_MEMORY_EMAIL_VERIFICATION_TOKENS if table == 'email_verification_tokens' else _MEMORY_PASSWORD_RESET_TOKENS).get(token)
+
+
+def _mark_token_used(table, token):
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor(dict_cursor=False) as (conn, cur):
+                cur.execute(f'UPDATE {table} SET used = TRUE WHERE token = %s', (token,))
+            return
+        except Exception:
+            logger.exception('Could not mark token as used in database')
+    record = (_MEMORY_EMAIL_VERIFICATION_TOKENS if table == 'email_verification_tokens' else _MEMORY_PASSWORD_RESET_TOKENS).get(token)
+    if record:
+        record['used'] = True
 
 
 def _get_memory_user_by_email(email):
@@ -540,8 +602,21 @@ def _get_user_by_email(email):
         logger.exception('Could not find user by email')
         return None
 
-    _MEMORY_ORDERS.append(order)
-    return order
+
+def _get_user_by_id(user_id):
+    if not DATABASE_ENABLED:
+        return next((user for user in _MEMORY_USERS if user['id'] == user_id), None)
+    try:
+        with db_cursor() as (conn, cur):
+            cur.execute(
+                'SELECT id, full_name, email_address, delivery_address, phone_number, email_verified FROM users WHERE id = %s',
+                (user_id,)
+            )
+            return cur.fetchone()
+    except Exception:
+        logger.exception('Could not find user by id')
+        return None
+
 
 def _persist_order(reference, payment_method, metadata=None):
     metadata = metadata or {}
@@ -550,42 +625,43 @@ def _persist_order(reference, payment_method, metadata=None):
     amount = metadata.get('amount')
     if amount is None and items:
         amount = sum(float(item.get('price', 0)) * int(item.get('quantity', 1)) for item in items)
+    amount = amount or 0
 
-    order = {
-        'id': len(_MEMORY_ORDERS) + 1,
-        'reference': reference,
-        'payment_method': payment_method,
-        'user_id': user_id,
-        'status': 'paid',
-        'amount': amount or 0,
-        'currency': 'NGN',
-        'items': items,
-        'created_at': int(time.time())
-    }
-    _MEMORY_ORDERS.append(order)
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    '''INSERT INTO orders (reference, payment_method, user_id, status, amount, currency, items)
+                       VALUES (%s, %s, %s, 'paid', %s, 'NGN', %s)
+                       ON CONFLICT (reference) DO UPDATE SET reference = EXCLUDED.reference
+                       RETURNING id, reference, payment_method, user_id, status, amount, currency, items, created_at''',
+                    (reference, payment_method, user_id, amount, json.dumps(items))
+                )
+                order = cur.fetchone()
+        except Exception:
+            logger.exception('Could not persist order to database')
+            order = {'reference': reference, 'payment_method': payment_method, 'user_id': user_id,
+                     'status': 'paid', 'amount': amount, 'currency': 'NGN', 'items': items,
+                     'created_at': int(time.time())}
+    else:
+        order = {
+            'id': len(_MEMORY_ORDERS) + 1, 'reference': reference, 'payment_method': payment_method,
+            'user_id': user_id, 'status': 'paid', 'amount': amount, 'currency': 'NGN',
+            'items': items, 'created_at': int(time.time())
+        }
+        _MEMORY_ORDERS.append(order)
 
-    # Send order confirmation email
     if user_id:
-        user = next((u for u in _MEMORY_USERS if u['id'] == user_id), None)
+        user = _get_user_by_id(user_id)
         if user and user.get('email_address'):
             items_list = "\n".join([f"- {item.get('name', 'Item')} (₦{item.get('price', 0)})" for item in items])
-            email_body = f"""
-            Thank you for your order at Bheemz Kitchen!
-
-            Order Reference: {reference}
-            Amount: ₦{amount}
-            Items:
-            {items_list}
-
-            Your order will be processed shortly.
-            """
             send_email(
                 user['email_address'],
                 "Your Bheemz Kitchen Order Confirmation",
-                email_body
+                f"Thank you for your order at Bheemz Kitchen!\n\nOrder Reference: {reference}\nAmount: ₦{amount}\nItems:\n{items_list}\n\nYour order will be processed shortly."
             )
-
     return order
+
 
 @app.route('/api/cart', methods=['POST'])
 @login_required
@@ -610,6 +686,14 @@ def save_cart():
 @login_required
 def list_orders():
     user_id = session['user_id']
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute('SELECT * FROM orders WHERE user_id = %s ORDER BY created_at DESC', (user_id,))
+                orders = cur.fetchall()
+            return jsonify({'status': 'success', 'orders': orders}), 200
+        except Exception as err:
+            return safe_error(err, log_msg='List orders failed')
     orders = [order for order in _MEMORY_ORDERS if order.get('user_id') == user_id]
     return jsonify({'status': 'success', 'orders': orders}), 200
 
@@ -635,6 +719,7 @@ def bank_transfer():
         return jsonify({'error': 'Insufficient funds.'}), 400
 
     source_account['balance'] -= amount_value
+    _update_account_balance(user_id, source_account['balance'])
     tx = _record_bank_transaction('bank_transfer', user_id, amount_value, account)
     return jsonify({'status': 'success', 'transaction': tx, 'balance': source_account['balance']}), 200
 
@@ -661,6 +746,7 @@ def bank_withdraw():
         return jsonify({'error': 'Insufficient funds.'}), 400
 
     account_record['balance'] -= amount_value
+    _update_account_balance(user_id, account_record['balance'])
     tx = _record_bank_transaction('bank_withdraw', user_id, amount_value, account)
     return jsonify({'status': 'success', 'transaction': tx, 'balance': account_record['balance']}), 200
 
@@ -754,7 +840,7 @@ def system_signup():
         }
         _MEMORY_USERS.append(user_record)
         token, expires_at, verification_record = _issue_token('verify', email, user_id=user_record['id'])
-        _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = verification_record
+        _store_token('email_verification_tokens', token, verification_record)
         verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
         email_sent = send_email(
             email,
@@ -785,7 +871,7 @@ def system_signup():
             )
             user_record = cur.fetchone()
         token, expires_at, verification_record = _issue_token('verify', email, user_id=user_record['id'])
-        _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = verification_record
+        _store_token('email_verification_tokens', token, verification_record)
         verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
         email_sent = send_email(
             email,
@@ -876,7 +962,7 @@ def reset_password():
     user = _get_user_by_email(email)
     token, expires_at, record = _issue_token('reset', email, user_id=user['id'] if user else None)
     _MEMORY_PASSWORD_RESET_REQUESTS.append({'email': email, 'token': token, 'created_at': int(time.time()), 'expires_at': expires_at})
-    _MEMORY_PASSWORD_RESET_TOKENS[token] = record
+    _store_token('password_reset_tokens', token, record)
 
     if user:
         reset_link = f'{FRONTEND_SUCCESS_URL}?reset_token={token}'
@@ -896,6 +982,7 @@ def reset_password():
         }
     }), 200
 
+
 @app.route('/api/reset-password/confirm', methods=['POST'])
 def confirm_reset_password():
     data = request.json or {}
@@ -905,7 +992,7 @@ def confirm_reset_password():
     if not token or not new_password:
         return jsonify({'error': 'Token and new_password are required.'}), 400
 
-    record = _MEMORY_PASSWORD_RESET_TOKENS.get(token)
+    record = _get_token('password_reset_tokens', token)
     if not record or record.get('used'):
         return jsonify({'error': 'Invalid or expired reset token.'}), 400
 
@@ -928,7 +1015,7 @@ def confirm_reset_password():
             return safe_error(err, log_msg='Password reset update failed')
     else:
         user['password_hash'] = hashed_password
-    record['used'] = True
+    _mark_token_used('password_reset_tokens', token)
     return jsonify({'message': 'Password reset successful.'}), 200
 
 
@@ -947,7 +1034,7 @@ def verify_email():
         'expires_at': expires_at,
         'verified_at': None
     }
-    _MEMORY_EMAIL_VERIFICATION_TOKENS[token] = record
+    _store_token('email_verification_tokens', token, record)
 
     verify_link = f'{FRONTEND_SUCCESS_URL}?verify_token={token}'
     email_sent = send_email(
@@ -957,9 +1044,9 @@ def verify_email():
     )
 
     return jsonify({
-        'message': 'Verification email sent.' if email_sent else 'Verification token created (email not sent — SMTP not configured).',
+        'message': 'Verification email sent.' if email_sent else 'Verification token created (email not sent — check RESEND_API_KEY).',
         'delivery': {
-            'provider': 'gmail' if email_sent else 'demo',
+            'provider': 'resend' if email_sent else 'demo',
             'method': 'email',
             'token': token,
             'expires_at': expires_at
@@ -974,7 +1061,7 @@ def confirm_email_verification():
     if not token:
         return jsonify({'error': 'Token is required.'}), 400
 
-    record = _MEMORY_EMAIL_VERIFICATION_TOKENS.get(token)
+    record = _get_token('email_verification_tokens', token)
     if not record or record.get('used'):
         return jsonify({'error': 'Invalid or expired verification token.'}), 400
 
@@ -999,7 +1086,7 @@ def confirm_email_verification():
         'expires_at': record['expires_at'],
         'verified_at': int(time.time())
     }
-    record['used'] = True
+    _mark_token_used('email_verification_tokens', token)
     return jsonify({'message': 'Email verification confirmed.', 'email': record['email']}), 200
 
 
@@ -1045,6 +1132,7 @@ def save_profile():
     except Exception as err:
         return safe_error(err, log_msg='Profile save failed')
 
+
 @app.route('/api/experts', methods=['GET'])
 def list_experts():
     return jsonify(_MEMORY_EXPERTS), 200
@@ -1061,24 +1149,34 @@ def request_consultation():
     if not expert:
         return jsonify({'error': 'Selected expert not found.'}), 400
 
-    request_record = {
-        'id': len(_MEMORY_CONSULTATION_REQUESTS) + 1,
-        'user_id': session['user_id'],
-        'expert_id': expert_id,
-        'expert_name': expert['name'],
-        'message': message,
-        'status': 'pending',
-        'created_at': int(time.time())
-    }
-    _MEMORY_CONSULTATION_REQUESTS.append(request_record)
+    user_id = session['user_id']
+    created_at = int(time.time())
+
+    if DATABASE_ENABLED:
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    '''INSERT INTO consultation_requests (user_id, expert_id, expert_name, message, status, created_at)
+                       VALUES (%s, %s, %s, %s, 'pending', %s) RETURNING *''',
+                    (user_id, expert_id, expert['name'], message, created_at)
+                )
+                request_record = cur.fetchone()
+        except Exception as err:
+            return safe_error(err, log_msg='Consultation request failed')
+    else:
+        request_record = {
+            'id': len(_MEMORY_CONSULTATION_REQUESTS) + 1, 'user_id': user_id, 'expert_id': expert_id,
+            'expert_name': expert['name'], 'message': message, 'status': 'pending', 'created_at': created_at
+        }
+        _MEMORY_CONSULTATION_REQUESTS.append(request_record)
+
     return jsonify({'status': 'success', 'message': 'Request received — an expert will reach out within 24 hours.', 'request': request_record}), 201
+
 
 @app.route('/api/meals', methods=['GET'])
 def get_filtered_meals():
     challenge = request.args.get('challenge', 'None')
     category = request.args.get('category', 'All')
-
-
 
     if not DATABASE_ENABLED:
         meals = [
@@ -1176,6 +1274,7 @@ def get_filtered_meals():
             return jsonify(records)
     except Exception as err:
         return safe_error(err, log_msg='Meal fetch failed')
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '5003'))

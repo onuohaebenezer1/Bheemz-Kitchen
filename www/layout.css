@@ -724,7 +724,7 @@ body.dark .user-welcome {
 
 @media (max-width: 480px) {
     .auth-card {
-        max-height: calc(100dvh - 40px); /* leaves breathing room, accounts for the 10px padding on .modal-overlay each side */
+        max-height: calc(100dvh - 40px);
         padding-bottom: env(safe-area-inset-bottom, 20px);
     }
 }
